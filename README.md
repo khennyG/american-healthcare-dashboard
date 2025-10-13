@@ -9,6 +9,7 @@ A Streamlit dashboard for class participation and attendance analytics with a No
 - By Week view with option to show only participants or everyone
 - Theming: Northeastern red/white, custom fonts, Plotly defaults
 - Auto-refresh: cache TTL + manual Refresh Data button
+- Export: Download per-student PDF including charts and attendance summary
 
 ## Project Structure
 - `dashboard.py` – main Streamlit app
@@ -39,6 +40,11 @@ A Streamlit dashboard for class participation and attendance analytics with a No
 
 ## Requirements
 See `requirements.txt`.
+
+Includes:
+- streamlit, pandas, plotly, openpyxl
+- kaleido (Plotly static export)
+- reportlab (PDF generation)
 
 ## Notes
 - Data file expected: `American_Healthcare_Class_Cleaned.xlsx` in the repo root.

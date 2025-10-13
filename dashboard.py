@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 import re
+from io import BytesIO
 
 # -------------------------------
 # CONFIG
@@ -209,6 +210,116 @@ def calculate_score(student_df: pd.DataFrame, weeks_total: int | None = None) ->
     bonus = min(bonus, 10)  # cap bonus at 10
 
     return round(min(base_score + bonus, 100.0), 1)
+
+# -------------------------------
+# PDF GENERATION (Per-student report)
+# -------------------------------
+def generate_student_pdf(
+    student_name: str,
+    fig_line: go.Figure,
+    fig_pie: go.Figure,
+    metrics: dict,
+    attendance_detail: dict,
+) -> bytes:
+    """Build a PDF report for a student with charts and summary.
+
+    Requires 'kaleido' for Plotly image export and 'reportlab' for PDF.
+    """
+    # Lazy imports so the app can run even if not installed locally
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import ImageReader
+        from reportlab.lib.colors import black
+    except Exception as e:
+        # Provide a friendly error as PDF bytes placeholder
+        return f"Missing PDF dependencies: {e}. Please install 'reportlab'.".encode()
+
+    # Export figures to PNG bytes (needs kaleido)
+    try:
+        line_png = pio.to_image(fig_line, format="png", scale=2)
+        pie_png = pio.to_image(fig_pie, format="png", scale=2)
+    except Exception as e:
+        return f"Chart export failed: {e}. Please ensure 'kaleido' is installed.".encode()
+
+    buf = BytesIO()
+    page_w, page_h = letter  # 612 x 792 pt
+    margin = 40
+    y = page_h - margin
+
+    c = canvas.Canvas(buf, pagesize=letter)
+
+    # Header
+    c.setFillColorRGB(0.8, 0, 0)  # NEU red
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(margin, y, f"Participation Report — {student_name}")
+    y -= 24
+    c.setStrokeColorRGB(0.8, 0, 0)
+    c.line(margin, y, page_w - margin, y)
+    y -= 20
+
+    # Metrics
+    c.setFillColor(black)
+    c.setFont("Helvetica", 11)
+    metrics_lines = [
+        f"Total Participation: {metrics.get('total', 0)}",
+        f"Average Weekly Participation: {metrics.get('avg', 0):.2f}",
+        f"Weeks Spoken: {metrics.get('spoke_weeks', 0)} / {metrics.get('weeks_total', 0)}",
+        f"Participation Score: {metrics.get('score', 0):.1f}/100",
+    ]
+    for line in metrics_lines:
+        c.drawString(margin, y, line)
+        y -= 16
+
+    y -= 6
+    # Attendance summary
+    c.setFillColorRGB(0.8, 0, 0)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin, y, "Attendance Summary:")
+    y -= 18
+    c.setFillColor(black)
+    c.setFont("Helvetica", 11)
+    present = attendance_detail.get("present_count", 0)
+    excused = attendance_detail.get("excused_count", 0)
+    absent = attendance_detail.get("absent_count", 0)
+    excused_suffix = attendance_detail.get("excused_suffix", "")
+    absent_suffix = attendance_detail.get("absent_suffix", "")
+    c.drawString(margin, y, f"Present: {present}")
+    y -= 16
+    c.drawString(margin, y, f"Excused: {excused}{excused_suffix}")
+    y -= 16
+    c.drawString(margin, y, f"Absent: {absent}{absent_suffix}")
+    y -= 22
+
+    # Line chart
+    try:
+        img = ImageReader(BytesIO(line_png))
+        img_w = page_w - 2 * margin
+        img_h = img_w * 0.4  # aspect heuristic
+        if y - img_h < margin:
+            c.showPage()
+            y = page_h - margin
+        c.drawImage(img, margin, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+        y -= img_h + 18
+    except Exception:
+        pass
+
+    # Pie chart
+    try:
+        img = ImageReader(BytesIO(pie_png))
+        img_w = (page_w - 3 * margin) / 2
+        img_h = img_w  # square
+        if y - img_h < margin:
+            c.showPage()
+            y = page_h - margin
+        c.drawImage(img, margin, y - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+        y -= img_h + 12
+    except Exception:
+        pass
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
@@ -418,6 +529,29 @@ elif view_mode == "By Student":
         - 💛 Excused: {excused_count}{excused_suffix}  
         - ❌ Absent: {absent_count}{absent_suffix}
         """
+    )
+
+    # Download PDF report
+    metrics_dict = {
+        "total": int(total),
+        "avg": float(avg) if pd.notna(avg) else 0.0,
+        "spoke_weeks": int(spoke_weeks),
+        "weeks_total": int(weeks_total),
+        "score": float(score),
+    }
+    attendance_detail = {
+        "present_count": int(present_count),
+        "excused_count": int(excused_count),
+        "absent_count": int(absent_count),
+        "excused_suffix": excused_suffix,
+        "absent_suffix": absent_suffix,
+    }
+    pdf_bytes = generate_student_pdf(student_choice, fig4, fig5, metrics_dict, attendance_detail)
+    st.download_button(
+        label="Download PDF report",
+        data=pdf_bytes,
+        file_name=f"{student_choice.replace(' ', '_')}_participation_report.pdf",
+        mime="application/pdf",
     )
 
 # -------------------------------
