@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
