@@ -102,6 +102,7 @@ def main():
         new_records.append({
             "Student": row["Student"],
             "Week": week_label,
+            "Date": date_str,
             "Topic": WEEK_TOPIC,
             "Participation": int(count_hashes(val)),
             "Attendance": attendance_status(val),
