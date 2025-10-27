@@ -227,10 +227,10 @@ def generate_student_pdf(
     """
     # Lazy imports so the app can run even if not installed locally
     try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.utils import ImageReader
-        from reportlab.lib.colors import black
+        from reportlab.lib.pagesizes import letter  # type: ignore
+        from reportlab.pdfgen import canvas  # type: ignore
+        from reportlab.lib.utils import ImageReader  # type: ignore
+        from reportlab.lib.colors import black  # type: ignore
     except Exception as e:
         # Provide a friendly error as PDF bytes placeholder
         return f"Missing PDF dependencies: {e}. Please install 'reportlab'.".encode()
