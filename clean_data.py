@@ -56,13 +56,14 @@ def attendance_status(value):
     if pd.isna(value):
         return "Absent"
     s = str(value)
-    if "$" in s:
+    s_upper = s.strip().upper()
+    if "$" in s or s_upper == "E" or "EXCUSED" in s_upper:
         return "Excused"
-    if "%" in s:
-        return "Absent"
-    if "*" in s:
+    if any(sym in s for sym in ("*", "✓", "✔")) or "#" in s or s_upper == "P" or "PRESENT" in s_upper:
         return "Present"
-    return "Present" if "#" in s else "Absent"
+    if "%" in s or s_upper in {"A", "X"} or "ABSENT" in s_upper:
+        return "Absent"
+    return "Absent"
 
 # Week details
 week_info = {

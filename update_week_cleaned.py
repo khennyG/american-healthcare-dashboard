@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 from pathlib import Path
 from typing import Optional, List
@@ -16,6 +17,33 @@ RAW_CANDIDATES: List[Path] = [
     Path("American HealthCare Class.xlsx"),
 ]
 CLEANED_FILE = Path("American_Healthcare_Class_Cleaned.xlsx")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Append or update a week's participation+attendance from raw to cleaned Excel."
+    )
+    parser.add_argument(
+        "--week", type=int, help="Week number to append/update (e.g., 7)"
+    )
+    parser.add_argument(
+        "--topic", type=str, help="Topic/title for the week to store in cleaned file"
+    )
+    parser.add_argument(
+        "--date", type=str, default=None, help="Optional date like MM/DD (e.g., 10/16). If omitted, will try parsing from header."
+    )
+    parser.add_argument(
+        "--raw",
+        type=str,
+        action="append",
+        help="Path to raw participation Excel. Can be passed multiple times to specify a search order.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not write the cleaned file; print a short summary instead.",
+    )
+    return parser.parse_args()
 
 
 def find_existing(paths: List[Path]) -> Optional[Path]:
@@ -42,16 +70,34 @@ def count_hashes(value) -> int:
 
 
 def attendance_status(value) -> str:
+    """Map raw cell symbols to an attendance label.
+
+    Supported symbols/markers:
+    - Present: contains '*', '✓', '✔', or '#'; or equals 'P'/'p' or contains 'PRESENT'
+    - Excused: contains '$'; or equals 'E'/'e' or contains 'EXCUSED'
+    - Absent: contains '%'; or equals 'A'/'a' or 'X'/'x' or contains 'ABSENT'
+
+    Precedence: Excused > Present > Absent. Empty/NaN -> Absent.
+    """
     if pd.isna(value):
         return "Absent"
     s = str(value)
-    if "$" in s:
+    s_upper = s.strip().upper()
+
+    # Excused first
+    if "$" in s or s_upper == "E" or "EXCUSED" in s_upper:
         return "Excused"
-    if "%" in s:
-        return "Absent"
-    if "*" in s:
+
+    # Present if explicit symbols or participation marks present
+    if any(sym in s for sym in ("*", "✓", "✔")) or "#" in s or s_upper == "P" or "PRESENT" in s_upper:
         return "Present"
-    return "Present" if "#" in s else "Absent"
+
+    # Absent symbols/markers
+    if "%" in s or s_upper in {"A", "X"} or "ABSENT" in s_upper:
+        return "Absent"
+
+    # Default to Absent if unknown marker
+    return "Absent"
 
 
 def extract_date_from_header(header: str) -> Optional[str]:
@@ -62,7 +108,7 @@ def extract_date_from_header(header: str) -> Optional[str]:
     return None
 
 
-def main():
+def main(dry_run: bool = False):
     raw_path = find_existing(RAW_CANDIDATES)
     if not raw_path:
         raise FileNotFoundError(
@@ -78,14 +124,32 @@ def main():
     df = df.dropna(subset=["Student"]).copy()
     df["Student"] = df["Student"].astype(str).str.strip()
 
-    # Find the Week N column
+    # Find the Week N column (robustly match the numeric after 'Week')
+    import re
+    def _is_target_week(col) -> bool:
+        s = str(col)
+        s_norm = " ".join(s.split()).lower()
+        if "week" not in s_norm:
+            return False
+        m = re.search(r"week\s*(\d+)", s_norm, flags=re.I)
+        if m:
+            try:
+                return int(m.group(1)) == WEEK_NUMBER
+            except ValueError:
+                return False
+        # fallback exact substring
+        return f"week {WEEK_NUMBER}" in s_norm
+
     week_col = None
     for c in df.columns:
-        if "week" in str(c).lower() and str(WEEK_NUMBER) in str(c):
+        if _is_target_week(c):
             week_col = c
             break
     if week_col is None:
-        raise ValueError(f"Could not find a column for Week {WEEK_NUMBER} in raw file headers: {list(df.columns)}")
+        candidate_weeks = [str(c) for c in df.columns if "week" in str(c).lower()]
+        raise ValueError(
+            f"Could not find a column for Week {WEEK_NUMBER}. Found week-like columns: {candidate_weeks}"
+        )
 
     # Build Week label and Topic
     header_str = str(week_col)
@@ -109,6 +173,11 @@ def main():
         })
 
     new_df = pd.DataFrame(new_records)
+
+    if dry_run:
+        print(f"[DRY-RUN] Would append {len(new_df)} rows for Week {WEEK_NUMBER} (label '{week_label}')")
+        print("Sample:\n", new_df.head().to_string(index=False))
+        return
 
     # If existing cleaned file present, append & dedupe; else create new
     if CLEANED_FILE.exists():
@@ -138,4 +207,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+
+    # Override config from CLI if provided
+    if args.week is not None:
+        WEEK_NUMBER = args.week
+    if args.topic is not None:
+        WEEK_TOPIC = args.topic
+    # Allow explicit empty string to clear date
+    if args.date is not None:
+        WEEK_DATE = args.date or None
+    if args.raw:
+        RAW_CANDIDATES = [Path(p) for p in args.raw]
+
+    main(dry_run=bool(args.dry_run))

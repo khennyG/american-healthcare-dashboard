@@ -102,15 +102,19 @@ def count_hashes(value):
 
 # Detect attendance
 def attendance_status(value):
+    """Map raw cell symbols to an attendance label (Present/Excused/Absent)."""
     if pd.isna(value):
         return "Absent"
-    if "$" in str(value):
+    s = str(value)
+    s_upper = s.strip().upper()
+
+    if "$" in s or s_upper == "E" or "EXCUSED" in s_upper:
         return "Excused"
-    if "%" in str(value):
-        return "Absent"
-    if "*" in str(value):
+    if any(sym in s for sym in ("*", "✓", "✔")) or "#" in s or s_upper == "P" or "PRESENT" in s_upper:
         return "Present"
-    return "Present" if "#" in str(value) else "Absent"
+    if "%" in s or s_upper in {"A", "X"} or "ABSENT" in s_upper:
+        return "Absent"
+    return "Absent"
 
 # Extract relevant columns (Weeks only)
 week_cols = [c for c in df.columns if "Week" in str(c)]
