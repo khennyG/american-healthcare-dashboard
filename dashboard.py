@@ -177,6 +177,7 @@ st.markdown("This dashboard provides a weekly breakdown of student participation
 # -------------------------------
 @st.cache_data(ttl=30, show_spinner=False)
 def load_data():
+    """Load cleaned participation data from Excel file."""
     df = pd.read_excel("American_Healthcare_Class_Cleaned.xlsx")
     df["Participation"] = df["Participation"].fillna(0).astype(int)
     return df
