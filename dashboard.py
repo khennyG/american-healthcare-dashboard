@@ -407,8 +407,15 @@ if view_mode == "Overview":
     fig.update_layout(margin=dict(l=180, r=20, t=60, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Average participation per week
+    # Average participation per week - sort numerically by week number
     avg = df.groupby("Week")["Participation"].mean().reset_index()
+    def natural_sort_key(week_str):
+        """Extract week number for proper numeric sorting"""
+        match = re.search(r'Week\s*(\d+)', str(week_str))
+        return int(match.group(1)) if match else 0
+    avg["_sort"] = avg["Week"].apply(natural_sort_key)
+    avg = avg.sort_values("_sort").drop("_sort", axis=1)
+    
     fig2 = px.bar(
         avg,
         x="Week",
@@ -417,6 +424,7 @@ if view_mode == "Overview":
         color="Participation",
         color_continuous_scale="Reds"
     )
+    fig2.update_xaxes(categoryorder='array', categoryarray=avg["Week"].tolist())
     st.plotly_chart(fig2, use_container_width=True)
 
     # Attendance summary
@@ -559,7 +567,13 @@ elif view_mode == "By Student":
 # BY WEEK MODE
 # -------------------------------
 else:
-    weeks = sorted(df["Week"].unique())
+    # Sort weeks numerically by week number, not alphabetically
+    def natural_sort_key(week_str):
+        """Extract week number for proper numeric sorting"""
+        match = re.search(r'Week\s*(\d+)', str(week_str))
+        return int(match.group(1)) if match else 0
+    
+    weeks = sorted(df["Week"].unique(), key=natural_sort_key)
     week_choice = st.sidebar.selectbox("Select a week", weeks)
     week_df = df[df["Week"] == week_choice]
     topic = week_df["Topic"].iloc[0] if not week_df.empty else ""
