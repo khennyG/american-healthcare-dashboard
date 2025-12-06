@@ -173,6 +173,14 @@ st.title("HINF 5105 American Healthcare – Participation & Attendance Dashboard
 st.markdown("This dashboard provides a weekly breakdown of student participation and attendance.")
 
 # -------------------------------
+# HELPERS
+# -------------------------------
+def natural_week_sort_key(week_str: str) -> int:
+    """Extract numeric week for chronological sorting (Week 1..n)."""
+    m = re.search(r"Week\s*(\d+)", str(week_str))
+    return int(m.group(1)) if m else 0
+
+# -------------------------------
 # LOAD DATA
 # -------------------------------
 @st.cache_data(ttl=30, show_spinner=False)
@@ -409,11 +417,7 @@ if view_mode == "Overview":
 
     # Average participation per week - sort numerically by week number
     avg = df.groupby("Week")["Participation"].mean().reset_index()
-    def natural_sort_key(week_str):
-        """Extract week number for proper numeric sorting"""
-        match = re.search(r'Week\s*(\d+)', str(week_str))
-        return int(match.group(1)) if match else 0
-    avg["_sort"] = avg["Week"].apply(natural_sort_key)
+    avg["_sort"] = avg["Week"].apply(natural_week_sort_key)
     avg = avg.sort_values("_sort").drop("_sort", axis=1)
     
     fig2 = px.bar(
@@ -444,7 +448,10 @@ if view_mode == "Overview":
 elif view_mode == "By Student":
     students = sorted(df["Student"].unique())
     student_choice = st.sidebar.selectbox("Select a student", students)
-    student_df = df[df["Student"] == student_choice]
+    student_df = df[df["Student"] == student_choice].copy()
+    # Ensure chronological order of weeks for plots/metrics
+    student_df["_sort"] = student_df["Week"].apply(natural_week_sort_key)
+    student_df = student_df.sort_values("_sort").drop(columns=["_sort"]) 
 
     st.subheader(f"Participation Trend – {student_choice}")
 
@@ -457,6 +464,7 @@ elif view_mode == "By Student":
         text="Participation",
         title=f"Participation Over Time – {student_choice}",
     )
+    fig4.update_xaxes(categoryorder='array', categoryarray=student_df["Week"].tolist())
     st.plotly_chart(fig4, use_container_width=True)
 
     # Attendance pie chart
@@ -568,12 +576,7 @@ elif view_mode == "By Student":
 # -------------------------------
 else:
     # Sort weeks numerically by week number, not alphabetically
-    def natural_sort_key(week_str):
-        """Extract week number for proper numeric sorting"""
-        match = re.search(r'Week\s*(\d+)', str(week_str))
-        return int(match.group(1)) if match else 0
-    
-    weeks = sorted(df["Week"].unique(), key=natural_sort_key)
+    weeks = sorted(df["Week"].unique(), key=natural_week_sort_key)
     week_choice = st.sidebar.selectbox("Select a week", weeks)
     week_df = df[df["Week"] == week_choice]
     topic = week_df["Topic"].iloc[0] if not week_df.empty else ""
